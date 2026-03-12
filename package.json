@@ -1,0 +1,16 @@
+{
+  "name": "gform-bouncer",
+  "version": "1.0.0",
+  "description": "Discord bot that assigns Beta Tester role based on Google Form responses",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "auth": "node auth-setup.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7",
+    "googleapis": "^146.0.0",
+    "express": "^5.1.0"
+  }
+}
