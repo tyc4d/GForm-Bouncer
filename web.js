@@ -87,6 +87,7 @@ function createApp() {
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
         "https://www.googleapis.com/auth/drive.metadata.readonly",
+        "https://www.googleapis.com/auth/forms.body.readonly",
         "https://www.googleapis.com/auth/forms.responses.readonly",
       ],
     });
@@ -167,16 +168,46 @@ function createApp() {
     }
   });
 
+  app.get("/api/forms/:formId/questions", async (req, res) => {
+    const s = getSession(req);
+    if (!s) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const client = makeOAuth2();
+      client.setCredentials({
+        access_token: s.accessToken,
+        refresh_token: s.refreshToken,
+      });
+
+      const formsApi = google.forms({ version: "v1", auth: client });
+      const { data } = await formsApi.forms.get({ formId: req.params.formId });
+
+      const questions = (data.items || [])
+        .filter((item) => item.questionItem)
+        .map((item) => ({
+          questionId: item.questionItem.question.questionId,
+          title: item.title || "(無標題)",
+        }));
+
+      res.json({ formTitle: data.info?.title || "", questions });
+    } catch (err) {
+      console.error("Get form questions error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/forms/select", (req, res) => {
     const s = getSession(req);
     if (!s) return res.status(401).json({ error: "Unauthorized" });
 
-    const { formId, formName } = req.body;
+    const { formId, formName, questionId, questionTitle } = req.body;
     if (!formId) return res.status(400).json({ error: "Missing formId" });
 
     const config = saveConfig({
       selectedFormId: formId,
       selectedFormName: formName || "",
+      selectedQuestionId: questionId || null,
+      selectedQuestionTitle: questionTitle || null,
       selectedBy: s.email,
       selectedAt: new Date().toISOString(),
     });
@@ -191,6 +222,8 @@ function createApp() {
     res.json({
       selectedFormId: c.selectedFormId || null,
       selectedFormName: c.selectedFormName || null,
+      selectedQuestionId: c.selectedQuestionId || null,
+      selectedQuestionTitle: c.selectedQuestionTitle || null,
       selectedBy: c.selectedBy || null,
       selectedAt: c.selectedAt || null,
     });

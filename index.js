@@ -27,7 +27,7 @@ function getEffectiveConfig() {
   return {
     formId: file.selectedFormId || GOOGLE_FORM_ID,
     refreshToken: file.googleRefreshToken || GOOGLE_REFRESH_TOKEN,
-    questionId: FORM_QUESTION_ID,
+    questionId: file.selectedQuestionId || FORM_QUESTION_ID,
   };
 }
 

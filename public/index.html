@@ -93,7 +93,26 @@
     .btn-save:hover{background:#4752C4}
     .btn-save:disabled{background:#bbb;cursor:not-allowed}
 
+    /* ── Question selector ── */
+    .question-section{
+      margin-top:18px;padding-top:18px;border-top:1px solid #eee;
+    }
+    .question-section label{font-weight:600;font-size:.95em;display:block;margin-bottom:10px;color:#333}
+    .question-select{
+      width:100%;padding:12px 14px;border:2px solid #ddd;border-radius:8px;
+      font-size:.95em;background:#fafafa;color:#333;cursor:pointer;
+      appearance:none;-webkit-appearance:none;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23999' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 14px center;
+      transition:border-color .15s;
+    }
+    .question-select:focus{outline:none;border-color:#5865F2}
+    .question-select:disabled{background:#f0f0f0;color:#999;cursor:not-allowed}
+    .question-loading{font-size:.88em;color:#999;padding:8px 0}
+
     .empty{color:#999;padding:20px 0;text-align:center}
+
+    @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
 
     footer{text-align:center;padding:32px;font-size:.8em;color:#aaa}
     footer a{color:#999;text-decoration:none;margin:0 6px}
@@ -134,6 +153,15 @@
       <div class="card">
         <h3>📄 選擇 Google 表單</h3>
         <div id="forms-container"><div class="empty">載入中…</div></div>
+        <div class="question-section" id="question-section" style="display:none">
+          <label>🔍 篩選欄位（Discord ID 對應的問題）</label>
+          <div id="question-container">
+            <select class="question-select" id="question-select" disabled>
+              <option value="">請先選擇表單</option>
+            </select>
+          </div>
+        </div>
+        <div id="save-container"></div>
       </div>
     </div>
   </div>
@@ -145,6 +173,8 @@
   <script>
     let selectedFormId = null;
     let selectedFormName = null;
+    let selectedQuestionId = null;
+    let selectedQuestionTitle = null;
 
     async function init() {
       try {
@@ -185,10 +215,16 @@
         const c = await res.json();
         if (c.selectedFormId) {
           selectedFormId = c.selectedFormId;
+          selectedQuestionId = c.selectedQuestionId;
+          selectedQuestionTitle = c.selectedQuestionTitle;
           el.innerHTML = `
             <div class="status-row">
               <span class="status-label">表單名稱</span>
               <span class="status-value">${esc(c.selectedFormName || "—")}</span>
+            </div>
+            <div class="status-row">
+              <span class="status-label">篩選欄位</span>
+              <span class="status-value">${esc(c.selectedQuestionTitle || "—")}</span>
             </div>
             <div class="status-row">
               <span class="status-label">表單 ID</span>
@@ -221,17 +257,20 @@
           box.innerHTML = '<div class="empty">此帳號下找不到任何 Google 表單</div>';
           return;
         }
-        box.innerHTML =
-          forms.map(f => `
-            <div class="form-item${f.id === selectedFormId ? " selected" : ""}"
-                 data-id="${f.id}" data-name="${esc(f.name)}" onclick="selectForm(this)">
-              <div>
-                <div class="form-name">${esc(f.name)}</div>
-                <div class="form-date">最後修改：${new Date(f.modifiedTime).toLocaleString("zh-TW")}</div>
-              </div>
-              <div class="check">✓</div>
-            </div>`).join("") +
+        box.innerHTML = forms.map(f => `
+          <div class="form-item${f.id === selectedFormId ? " selected" : ""}"
+               data-id="${f.id}" data-name="${esc(f.name)}" onclick="selectForm(this)">
+            <div>
+              <div class="form-name">${esc(f.name)}</div>
+              <div class="form-date">最後修改：${new Date(f.modifiedTime).toLocaleString("zh-TW")}</div>
+            </div>
+            <div class="check">✓</div>
+          </div>`).join("");
+
+        document.getElementById("save-container").innerHTML =
           '<button class="btn-save" id="btn-save" onclick="saveSelection()">儲存選擇</button>';
+
+        if (selectedFormId) loadQuestions(selectedFormId);
       } catch (err) {
         box.innerHTML = `<div class="empty" style="color:#e74c3c">載入失敗：${esc(err.message)}</div>`;
       }
@@ -242,17 +281,73 @@
       el.classList.add("selected");
       selectedFormId = el.dataset.id;
       selectedFormName = el.dataset.name;
+      selectedQuestionId = null;
+      selectedQuestionTitle = null;
+      loadQuestions(selectedFormId);
+    }
+
+    async function loadQuestions(formId) {
+      const section = document.getElementById("question-section");
+      const container = document.getElementById("question-container");
+      section.style.display = "";
+      container.innerHTML = '<div class="question-loading">載入表單欄位中…</div>';
+
+      try {
+        const res = await fetch(`/api/forms/${formId}/questions`);
+        if (!res.ok) throw new Error("Failed");
+        const { questions } = await res.json();
+
+        if (!questions.length) {
+          container.innerHTML = '<div class="question-loading" style="color:#e67e22">此表單沒有任何問題欄位</div>';
+          return;
+        }
+
+        const options = questions.map(q =>
+          `<option value="${q.questionId}" ${q.questionId === selectedQuestionId ? "selected" : ""}>${esc(q.title)}</option>`
+        ).join("");
+
+        container.innerHTML = `
+          <select class="question-select" id="question-select" onchange="onQuestionChange(this)">
+            <option value="">— 請選擇欄位 —</option>
+            ${options}
+          </select>`;
+
+        if (selectedQuestionId) {
+          document.getElementById("question-select").value = selectedQuestionId;
+        }
+      } catch (err) {
+        container.innerHTML = '<div class="question-loading" style="color:#e74c3c">載入欄位失敗</div>';
+      }
+    }
+
+    function onQuestionChange(select) {
+      selectedQuestionId = select.value || null;
+      const opt = select.options[select.selectedIndex];
+      selectedQuestionTitle = opt && opt.value ? opt.textContent : null;
     }
 
     async function saveSelection() {
       if (!selectedFormId) return;
+      if (!selectedQuestionId) {
+        document.getElementById("question-select")?.focus();
+        const sec = document.getElementById("question-section");
+        sec.style.animation = "none";
+        sec.offsetHeight;
+        sec.style.animation = "shake .4s";
+        return;
+      }
       const btn = document.getElementById("btn-save");
       btn.disabled = true; btn.textContent = "儲存中…";
       try {
         const res = await fetch("/api/forms/select", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ formId: selectedFormId, formName: selectedFormName }),
+          body: JSON.stringify({
+            formId: selectedFormId,
+            formName: selectedFormName,
+            questionId: selectedQuestionId,
+            questionTitle: selectedQuestionTitle,
+          }),
         });
         if (!res.ok) throw new Error("Failed");
         btn.textContent = "✓ 已儲存";
