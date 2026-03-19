@@ -34,10 +34,10 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-  console.log(`✅ 已登入 Discord：${client.user.tag}`);
+  console.log(`[OK] Discord logged in: ${client.user.tag}`);
   const { formId } = getEffectiveConfig();
-  console.log(`📋 表單 ID：${formId || "(尚未設定，請至網頁介面選擇)"}`);
-  console.log(`🔄 輪詢間隔：${INTERVAL_MS / 1000} 秒`);
+  console.log(`[OK] Form ID: ${formId || "(not set, configure via web UI)"}`);
+  console.log(`[OK] Poll interval: ${INTERVAL_MS / 1000}s`);
 
   pollFormResponses();
   setInterval(pollFormResponses, INTERVAL_MS);
@@ -49,11 +49,11 @@ async function pollFormResponses() {
   const { formId, refreshToken, questionId } = getEffectiveConfig();
 
   if (!formId || !refreshToken) {
-    console.log("⚠️  尚未設定表單或 Google 授權，請至網頁介面完成設定");
+    console.log("[WARN] Form or Google auth not configured. Please complete setup via web UI.");
     return;
   }
 
-  console.log(`\n⏳ [${new Date().toLocaleTimeString()}] 正在擷取表單回覆…`);
+  console.log(`\n[POLL] ${new Date().toLocaleTimeString()} Fetching form responses...`);
 
   const oauth2 = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
   oauth2.setCredentials({ refresh_token: refreshToken });
@@ -65,7 +65,7 @@ async function pollFormResponses() {
     const responses = res.data.responses || [];
 
     if (!responses.length) {
-      console.log("📭 沒有新的回覆");
+      console.log("[POLL] No new responses");
       return;
     }
 
@@ -82,7 +82,7 @@ async function pollFormResponses() {
 
       const identifier = extractDiscordIdentifier(entry, questionId);
       if (!identifier) {
-        console.log(`⚠️  回覆 ${entry.responseId} 缺少 Discord 資訊，跳過`);
+        console.log(`[SKIP] Response ${entry.responseId}: missing Discord identifier`);
         skipped++;
         continue;
       }
@@ -90,36 +90,36 @@ async function pollFormResponses() {
       try {
         const member = await resolveGuildMember(guild, identifier);
         if (!member) {
-          console.log(`❌ 找不到 Discord 使用者：${identifier}`);
+          console.log(`[NOT FOUND] Discord user: ${identifier}`);
           notFound++;
           continue;
         }
 
         if (member.roles.cache.has(ROLE_ID)) {
-          console.log(`⏩ ${member.user.tag} 已有 Beta Tester 角色`);
+          console.log(`[SKIP] ${member.user.tag} already has Beta Tester role`);
           skipped++;
           continue;
         }
 
         await member.roles.add(ROLE_ID);
-        console.log(`✅ 已為 ${member.user.tag} 加上 Beta Tester 角色`);
+        console.log(`[ASSIGNED] ${member.user.tag} -> Beta Tester`);
         assigned++;
       } catch (err) {
         if (err.code === 50013) {
           console.error(
-            `❌ 權限不足：無法為 ${identifier} 指派角色。請確認 Bot 的角色排序在 "Beta Tester" 角色之上。`
+            `[ERROR] Missing permissions for ${identifier}. Ensure the bot role is above "Beta Tester" in server settings.`
           );
         } else {
-          console.error(`❌ 處理 ${identifier} 時發生錯誤：`, err.message);
+          console.error(`[ERROR] Failed to process ${identifier}:`, err.message);
         }
       }
     }
 
     console.log(
-      `📊 結果：已指派 ${assigned}，跳過 ${skipped}，找不到 ${notFound}`
+      `[RESULT] Assigned: ${assigned}, Skipped: ${skipped}, Not found: ${notFound}`
     );
   } catch (err) {
-    console.error("❌ 輪詢失敗：", err.message);
+    console.error("[ERROR] Poll failed:", err.message);
   }
 }
 
@@ -167,7 +167,7 @@ async function resolveGuildMember(guild, identifier) {
 
 const app = createApp();
 app.listen(WEB_PORT, () => {
-  console.log(`🌐 網頁伺服器已啟動：http://localhost:${WEB_PORT}`);
+  console.log(`[OK] Web server running at http://localhost:${WEB_PORT}`);
 });
 
 // ── Start Discord Bot ──────────────────────────────────────────
