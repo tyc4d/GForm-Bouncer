@@ -1,4 +1,6 @@
 require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 const { Client, GatewayIntentBits } = require("discord.js");
 const { google } = require("googleapis");
 const { createApp, loadConfig } = require("./web");
@@ -17,7 +19,39 @@ const {
 const INTERVAL_MS = parseInt(POLL_INTERVAL, 10) || 300_000;
 const WEB_PORT = parseInt(PORT, 10) || 3001;
 
-const processedResponses = new Set();
+// ── UTC+8 Timestamp ────────────────────────────────────────────
+
+function now() {
+  return new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false });
+}
+
+// ── State Persistence ──────────────────────────────────────────
+
+const STATE_PATH = path.join(__dirname, "data", "state.json");
+
+function loadState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_PATH, "utf-8"));
+  } catch {
+    return { processedResponses: [], reportedResponses: [] };
+  }
+}
+
+function saveState() {
+  const dir = path.dirname(STATE_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    STATE_PATH,
+    JSON.stringify({
+      processedResponses: [...processedResponses],
+      reportedResponses: [...reportedResponses],
+    })
+  );
+}
+
+const saved = loadState();
+const processedResponses = new Set(saved.processedResponses);
+const reportedResponses = new Set(saved.reportedResponses);
 const unresolvedIdentifiers = new Map();
 
 function getEffectiveConfig() {
@@ -40,6 +74,7 @@ client.once("ready", () => {
   const { formId } = getEffectiveConfig();
   console.log(`[OK] Form ID: ${formId || "(not set, configure via web UI)"}`);
   console.log(`[OK] Poll interval: ${INTERVAL_MS / 1000}s`);
+  console.log(`[OK] Restored ${processedResponses.size} processed responses from state`);
 
   pollFormResponses();
   setInterval(pollFormResponses, INTERVAL_MS);
@@ -65,15 +100,16 @@ client.on("guildMemberAdd", async (member) => {
 
     try {
       if (member.roles.cache.has(ROLE_ID)) {
-        console.log(`[JOIN] ${member.user.tag} already has Beta Tester role`);
+        console.log(`[JOIN] ${now()} ${member.user.tag} already has role`);
       } else {
         await member.roles.add(ROLE_ID);
-        console.log(`[JOIN] ${member.user.tag} joined and matched -> Beta Tester`);
+        console.log(`[JOIN] ${now()} ${member.user.tag} joined and matched -> Beta Tester`);
       }
       unresolvedIdentifiers.delete(identifier);
       processedResponses.add(responseId);
+      saveState();
     } catch (err) {
-      console.error(`[ERROR] Failed to assign role on join for ${member.user.tag}:`, err.message);
+      console.error(`[ERROR] ${now()} Failed to assign role on join for ${member.user.tag}:`, err.message);
     }
     break;
   }
@@ -81,12 +117,11 @@ client.on("guildMemberAdd", async (member) => {
 
 // ── Discord Report ─────────────────────────────────────────────
 
-const reportedResponses = new Set();
-
 async function reportToChannel(entry, identifier, reason, questionId) {
   if (!REPORT_CHANNEL_ID) return;
   if (reportedResponses.has(entry.responseId)) return;
   reportedResponses.add(entry.responseId);
+  saveState();
 
   try {
     const channel = await client.channels.fetch(REPORT_CHANNEL_ID);
@@ -96,15 +131,15 @@ async function reportToChannel(entry, identifier, reason, questionId) {
     const timestamp = entry.lastSubmittedTime || entry.createTime || "N/A";
 
     const message = [
-      `**[REPORT] Unresolved form response**`,
-      `**Reason:** ${reason}`,
-      `**Input value:** \`${fieldValue || "N/A"}\``,
-      `**Submitted:** ${timestamp}`,
+      `**[回報] 無法處理的表單回覆**`,
+      `**原因：** ${reason}`,
+      `**填寫內容：** \`${fieldValue || "N/A"}\``,
+      `**提交時間：** ${timestamp}`,
     ].join("\n");
 
     await channel.send(message);
   } catch (err) {
-    console.error("[ERROR] Failed to send report:", err.message);
+    console.error(`[ERROR] ${now()} Failed to send report:`, err.message);
   }
 }
 
@@ -120,11 +155,11 @@ async function pollFormResponses() {
   const { formId, refreshToken, questionId } = getEffectiveConfig();
 
   if (!formId || !refreshToken) {
-    console.log("[WARN] Form or Google auth not configured. Please complete setup via web UI.");
+    console.log(`[WARN] ${now()} Form or Google auth not configured.`);
     return;
   }
 
-  console.log(`\n[POLL] ${new Date().toLocaleTimeString()} Fetching form responses...`);
+  console.log(`\n[POLL] ${now()} Fetching form responses...`);
 
   const oauth2 = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
   oauth2.setCredentials({ refresh_token: refreshToken });
@@ -136,7 +171,7 @@ async function pollFormResponses() {
     const responses = res.data.responses || [];
 
     if (!responses.length) {
-      console.log("[POLL] No new responses");
+      console.log(`[POLL] ${now()} No new responses`);
       return;
     }
 
@@ -149,12 +184,13 @@ async function pollFormResponses() {
         skipped++;
         continue;
       }
-      processedResponses.add(entry.responseId);
 
       const identifier = extractDiscordIdentifier(entry, questionId);
       if (!identifier) {
-        console.log(`[SKIP] Response ${entry.responseId}: missing Discord identifier`);
-        await reportToChannel(entry, null, "Missing Discord identifier in form response", questionId);
+        console.log(`[SKIP] ${now()} Response ${entry.responseId}: missing identifier`);
+        await reportToChannel(entry, null, "表單回覆中缺少 Discord 識別資訊", questionId);
+        processedResponses.add(entry.responseId);
+        saveState();
         skipped++;
         continue;
       }
@@ -162,40 +198,43 @@ async function pollFormResponses() {
       try {
         const member = await resolveGuildMember(guild, identifier);
         if (!member) {
-          console.log(`[NOT FOUND] Discord user: ${identifier} (will check on join)`);
+          console.log(`[NOT FOUND] ${now()} Discord user: ${identifier} (will check on join)`);
           unresolvedIdentifiers.set(identifier, entry.responseId);
-          await reportToChannel(entry, identifier, "Cannot find Discord user in server", questionId);
+          await reportToChannel(entry, identifier, `在伺服器中找不到 Discord 使用者「${identifier}」`, questionId);
           notFound++;
           continue;
         }
 
+        processedResponses.add(entry.responseId);
+        saveState();
+
         if (member.roles.cache.has(ROLE_ID)) {
-          console.log(`[SKIP] ${member.user.tag} already has Beta Tester role`);
+          console.log(`[SKIP] ${now()} ${member.user.tag} already has role`);
           skipped++;
           continue;
         }
 
         await member.roles.add(ROLE_ID);
-        console.log(`[ASSIGNED] ${member.user.tag} -> Beta Tester`);
+        console.log(`[ASSIGNED] ${now()} ${member.user.tag} -> Beta Tester`);
         assigned++;
       } catch (err) {
         if (err.code === 50013) {
           console.error(
-            `[ERROR] Missing permissions for ${identifier}. Ensure the bot role is above "Beta Tester" in server settings.`
+            `[ERROR] ${now()} Missing permissions for ${identifier}. Ensure the bot role is above "Beta Tester".`
           );
         } else {
-          console.error(`[ERROR] Failed to process ${identifier}:`, err.message);
+          console.error(`[ERROR] ${now()} Failed to process ${identifier}:`, err.message);
         }
       }
     }
 
-    console.log(
-      `[RESULT] Assigned: ${assigned}, Skipped: ${skipped}, Not found: ${notFound}`
-    );
+    console.log(`[RESULT] ${now()} Assigned: ${assigned}, Skipped: ${skipped}, Not found: ${notFound}`);
   } catch (err) {
-    console.error("[ERROR] Poll failed:", err.message);
+    console.error(`[ERROR] ${now()} Poll failed:`, err.message);
   }
 }
+
+// ── Identifier Extraction ──────────────────────────────────────
 
 function extractDiscordIdentifier(response, questionId) {
   const answers = response.answers;
@@ -207,12 +246,30 @@ function extractDiscordIdentifier(response, questionId) {
   const raw = answer.textAnswers?.answers?.[0]?.value?.trim();
   if (!raw) return null;
 
-  // Strip leading @ if present
-  return raw.replace(/^@/, "");
+  const cleaned = raw.replace(/^@/, "");
+
+  // Pure ASCII input: use as-is
+  if (/^[a-zA-Z0-9_.#]+$/.test(cleaned)) return cleaned;
+
+  // Contains non-ASCII (e.g. Chinese): extract English substrings as candidates
+  const candidates = cleaned.match(/[a-zA-Z][a-zA-Z0-9_.]{2,}/g);
+  if (candidates && candidates.length > 0) {
+    // Deduplicate and pick the most common one (likely repeated = the actual username)
+    const freq = {};
+    for (const c of candidates) {
+      const lower = c.toLowerCase();
+      freq[lower] = (freq[lower] || 0) + 1;
+    }
+    const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+    return sorted[0][0];
+  }
+
+  return null;
 }
 
+// ── Member Resolution ──────────────────────────────────────────
+
 async function resolveGuildMember(guild, identifier) {
-  // If numeric ID (17-20 digits), fetch directly
   if (/^\d{17,20}$/.test(identifier)) {
     try {
       return await guild.members.fetch(identifier);
@@ -221,10 +278,8 @@ async function resolveGuildMember(guild, identifier) {
     }
   }
 
-  // Strip old-style discriminator (e.g. "User#1234" → "User")
   const username = identifier.replace(/#\d{4}$/, "").toLowerCase();
 
-  // Search guild members by username
   const results = await guild.members.search({ query: username, limit: 100 });
 
   return (
