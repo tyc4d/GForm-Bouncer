@@ -1,4 +1,6 @@
 require("dotenv").config();
+const path = require("path");
+const express = require("express");
 const { Client, GatewayIntentBits } = require("discord.js");
 const { google } = require("googleapis");
 
@@ -12,9 +14,11 @@ const {
   GOOGLE_FORM_ID,
   FORM_QUESTION_ID,
   POLL_INTERVAL,
+  PORT,
 } = process.env;
 
 const INTERVAL_MS = parseInt(POLL_INTERVAL, 10) || 300_000;
+const WEB_PORT = parseInt(PORT, 10) || 3001;
 
 // Track already-processed response IDs to avoid duplicate work
 const processedResponses = new Set();
@@ -127,6 +131,18 @@ function extractDiscordId(response) {
   const mentionMatch = text.match(/^<@!?(\d+)>$/);
   return mentionMatch ? mentionMatch[1] : /^\d{17,20}$/.test(text) ? text : null;
 }
+
+// ── Web Server（服務條款 & 隱私權政策）──────────────────────────
+
+const app = express();
+
+app.get("/", (_req, res) => res.redirect("/tos"));
+app.get("/tos", (_req, res) => res.sendFile(path.join(__dirname, "tos.html")));
+app.get("/privacy", (_req, res) => res.sendFile(path.join(__dirname, "privacy.html")));
+
+app.listen(WEB_PORT, () => {
+  console.log(`🌐 網頁伺服器已啟動：http://localhost:${WEB_PORT}`);
+});
 
 // ── Start ──────────────────────────────────────────────────────
 
