@@ -2,13 +2,13 @@
 
 Discord Bot：自動根據 Google Form 回覆，為填寫者指派 **Beta Tester** 角色。
 
-附帶 Web 管理面板，可透過 Google OAuth 登入並選擇要共享的表單。
+附帶 Web 管理面板，可透過 Google OAuth 登入並選擇要共享的表單與篩選欄位。
 
 **正式環境**：<https://discord-bot-intergrate-ac5c9f6adb1888d5c1270690641a0f687e759348.tyc4d.tw/>
 
 ## 運作流程
 
-1. 管理者透過網頁介面登入 Google 帳號，選擇要監聽的 Google Form
+1. 管理者透過網頁介面登入 Google 帳號，選擇要監聽的 Google Form 及篩選欄位
 2. Bot 定時（預設每 5 分鐘）向 Google Forms API 拉取表單回覆
 3. 從每筆回覆中擷取填寫者輸入的 Discord ID
 4. 在 Discord 伺服器中搜尋對應的成員
@@ -20,7 +20,6 @@ Discord Bot：自動根據 Google Form 回覆，為填寫者指派 **Beta Tester
 ├── index.js              # 主程式（Discord Bot + Web Server）
 ├── web.js                # Express 模組（OAuth、API、頁面路由）
 ├── static.js             # 僅啟動 Web Server（不含 Bot）
-├── auth-setup.js         # CLI 工具：取得 Google Refresh Token
 ├── public/
 │   └── index.html        # 管理面板前端（OAuth 登入 + 表單選擇）
 ├── tos.html              # 服務條款
@@ -60,30 +59,18 @@ Discord Bot：自動根據 Google Form 回覆，為填寫者指派 **Beta Tester
 ## 快速開始
 
 ```bash
-# 安裝依賴
 npm install
-
-# 建立 .env
 cp .env.example .env
 # 編輯 .env，填入 DISCORD_TOKEN、GUILD_ID、GOOGLE_CLIENT_ID、GOOGLE_CLIENT_SECRET
 ```
 
-### 方式 A：透過網頁介面設定（推薦）
+### 設定表單（透過網頁介面）
 
 ```bash
-# 啟動 Web Server（不需要 Discord Token 也能執行）
 npm run static
 ```
 
-開啟 `http://localhost:3001`，用 Google 帳號登入後選擇表單即可。設定會存在 `data/config.json`。
-
-### 方式 B：透過 CLI 手動設定
-
-```bash
-npm run auth
-```
-
-瀏覽器會開啟 Google 授權頁面，登入後終端機會印出 `GOOGLE_REFRESH_TOKEN`，貼回 `.env` 即可。
+開啟 `http://localhost:3001`，用 Google 帳號登入 → 選擇表單 → 選擇篩選欄位 → 儲存。設定會存在 `data/config.json`。
 
 ### 啟動完整服務
 
@@ -99,7 +86,6 @@ npm start
 |---|---|
 | `npm start` | 啟動 Discord Bot + Web Server |
 | `npm run static` | 僅啟動 Web Server（管理面板 + TOS + Privacy） |
-| `npm run auth` | CLI 工具取得 Google Refresh Token |
 
 ## 環境變數
 
@@ -110,12 +96,11 @@ npm start
 | `ROLE_ID` | ✅ | 要指派的角色 ID（預設 Beta Tester） |
 | `GOOGLE_CLIENT_ID` | ✅ | Google OAuth2 Client ID |
 | `GOOGLE_CLIENT_SECRET` | ✅ | Google OAuth2 Client Secret |
-| `GOOGLE_REFRESH_TOKEN` | — | 透過網頁介面或 `npm run auth` 取得，存於 config.json 時可省略 |
 | `OAUTH_REDIRECT_URI` | — | OAuth2 callback URL，預設 `http://localhost:3001/auth/callback` |
-| `GOOGLE_FORM_ID` | — | Google Form ID，可透過網頁介面選擇（config.json 優先） |
-| `FORM_QUESTION_ID` | ✅ | 表單中 Discord ID 欄位的 question ID |
 | `POLL_INTERVAL` | — | 輪詢間隔（毫秒），預設 300000（5 分鐘） |
 | `PORT` | — | Web Server 連接埠，預設 3001 |
+
+> Google Refresh Token、表單 ID、篩選欄位 ID 皆透過網頁介面設定，儲存於 `data/config.json`。
 
 ## 部署（Ubuntu 24.04）
 

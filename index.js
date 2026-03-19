@@ -9,9 +9,6 @@ const {
   ROLE_ID,
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
-  GOOGLE_REFRESH_TOKEN,
-  GOOGLE_FORM_ID,
-  FORM_QUESTION_ID,
   POLL_INTERVAL,
   PORT,
 } = process.env;
@@ -21,13 +18,12 @@ const WEB_PORT = parseInt(PORT, 10) || 3001;
 
 const processedResponses = new Set();
 
-// config.json takes priority, .env as fallback
 function getEffectiveConfig() {
   const file = loadConfig();
   return {
-    formId: file.selectedFormId || GOOGLE_FORM_ID,
-    refreshToken: file.googleRefreshToken || GOOGLE_REFRESH_TOKEN,
-    questionId: file.selectedQuestionId || FORM_QUESTION_ID,
+    formId: file.selectedFormId || null,
+    refreshToken: file.googleRefreshToken || null,
+    questionId: file.selectedQuestionId || null,
   };
 }
 
