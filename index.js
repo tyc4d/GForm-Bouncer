@@ -185,8 +185,8 @@ async function pollFormResponses() {
         continue;
       }
 
-      const identifier = extractDiscordIdentifier(entry, questionId);
-      if (!identifier) {
+      const candidates = extractDiscordCandidates(entry, questionId);
+      if (!candidates.length) {
         console.log(`[SKIP] ${now()} Response ${entry.responseId}: missing identifier`);
         await reportToChannel(entry, null, "表單回覆中缺少 Discord 識別資訊", questionId);
         processedResponses.add(entry.responseId);
@@ -196,11 +196,21 @@ async function pollFormResponses() {
       }
 
       try {
-        const member = await resolveGuildMember(guild, identifier);
+        let member = null;
+        let matchedId = null;
+        for (const candidate of candidates) {
+          member = await resolveGuildMember(guild, candidate);
+          if (member) {
+            matchedId = candidate;
+            break;
+          }
+        }
+
         if (!member) {
-          console.log(`[NOT FOUND] ${now()} Discord user: ${identifier} (will check on join)`);
-          unresolvedIdentifiers.set(identifier, entry.responseId);
-          await reportToChannel(entry, identifier, `在伺服器中找不到 Discord 使用者「${identifier}」`, questionId);
+          const primary = candidates[0];
+          console.log(`[NOT FOUND] ${now()} Discord user: ${primary} (tried ${candidates.length} candidate(s), will check on join)`);
+          unresolvedIdentifiers.set(primary, entry.responseId);
+          await reportToChannel(entry, primary, `在伺服器中找不到 Discord 使用者「${primary}」`, questionId);
           notFound++;
           continue;
         }
@@ -215,15 +225,15 @@ async function pollFormResponses() {
         }
 
         await member.roles.add(ROLE_ID);
-        console.log(`[ASSIGNED] ${now()} ${member.user.tag} -> Beta Tester`);
+        console.log(`[ASSIGNED] ${now()} ${member.user.tag} (matched "${matchedId}") -> Beta Tester`);
         assigned++;
       } catch (err) {
         if (err.code === 50013) {
           console.error(
-            `[ERROR] ${now()} Missing permissions for ${identifier}. Ensure the bot role is above "Beta Tester".`
+            `[ERROR] ${now()} Missing permissions for ${candidates[0]}. Ensure the bot role is above "Beta Tester".`
           );
         } else {
-          console.error(`[ERROR] ${now()} Failed to process ${identifier}:`, err.message);
+          console.error(`[ERROR] ${now()} Failed to process ${candidates[0]}:`, err.message);
         }
       }
     }
@@ -236,35 +246,35 @@ async function pollFormResponses() {
 
 // ── Identifier Extraction ──────────────────────────────────────
 
-function extractDiscordIdentifier(response, questionId) {
+function extractDiscordCandidates(response, questionId) {
   const answers = response.answers;
-  if (!answers) return null;
+  if (!answers) return [];
 
   const answer = answers[questionId];
-  if (!answer) return null;
+  if (!answer) return [];
 
   const raw = answer.textAnswers?.answers?.[0]?.value?.trim();
-  if (!raw) return null;
+  if (!raw) return [];
 
   const cleaned = raw.replace(/^@/, "");
 
-  // Pure ASCII input: use as-is
-  if (/^[a-zA-Z0-9_.#]+$/.test(cleaned)) return cleaned;
+  if (/^[a-zA-Z0-9_.#]+$/.test(cleaned)) return [cleaned];
 
-  // Contains non-ASCII (e.g. Chinese): extract English substrings as candidates
-  const candidates = cleaned.match(/[a-zA-Z][a-zA-Z0-9_.]{2,}/g);
-  if (candidates && candidates.length > 0) {
-    // Deduplicate and pick the most common one (likely repeated = the actual username)
-    const freq = {};
-    for (const c of candidates) {
-      const lower = c.toLowerCase();
-      freq[lower] = (freq[lower] || 0) + 1;
-    }
-    const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
-    return sorted[0][0];
+  // Contains non-ASCII (e.g. Chinese): extract all English substrings and try each
+  const matches = cleaned.match(/[a-zA-Z][a-zA-Z0-9_.]{2,}/g);
+  if (!matches) return [];
+
+  // Deduplicate while preserving order, filter common non-username words
+  const skipWords = new Set(["email", "id"]);
+  const seen = new Set();
+  const result = [];
+  for (const m of matches) {
+    const lower = m.toLowerCase();
+    if (seen.has(lower) || skipWords.has(lower)) continue;
+    seen.add(lower);
+    result.push(lower);
   }
-
-  return null;
+  return result;
 }
 
 // ── Member Resolution ──────────────────────────────────────────
