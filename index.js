@@ -46,43 +46,37 @@ client.once("ready", () => {
 
 // ── Discord Report ─────────────────────────────────────────────
 
-async function reportToChannel(entry, identifier, reason) {
+const reportedResponses = new Set();
+
+async function reportToChannel(entry, identifier, reason, questionId) {
   if (!REPORT_CHANNEL_ID) return;
+  if (reportedResponses.has(entry.responseId)) return;
+  reportedResponses.add(entry.responseId);
 
   try {
     const channel = await client.channels.fetch(REPORT_CHANNEL_ID);
     if (!channel?.isTextBased()) return;
 
-    const allAnswers = formatAllAnswers(entry);
+    const fieldValue = extractFieldValue(entry, questionId);
     const timestamp = entry.lastSubmittedTime || entry.createTime || "N/A";
 
     const message = [
       `**[REPORT] Unresolved form response**`,
       `**Reason:** ${reason}`,
-      `**Identifier:** \`${identifier || "N/A"}\``,
-      `**Response ID:** \`${entry.responseId}\``,
+      `**Input value:** \`${fieldValue || "N/A"}\``,
       `**Submitted:** ${timestamp}`,
-      ``,
-      `**Full response:**`,
-      allAnswers,
     ].join("\n");
 
-    await channel.send(message.slice(0, 2000));
+    await channel.send(message);
   } catch (err) {
     console.error("[ERROR] Failed to send report:", err.message);
   }
 }
 
-function formatAllAnswers(entry) {
-  const answers = entry.answers;
-  if (!answers) return "_No answers_";
-
-  return Object.entries(answers)
-    .map(([qId, answer]) => {
-      const values = answer.textAnswers?.answers?.map((a) => a.value) || [];
-      return `> **${qId}**: ${values.join(", ") || "_empty_"}`;
-    })
-    .join("\n");
+function extractFieldValue(entry, questionId) {
+  const answer = entry.answers?.[questionId];
+  if (!answer) return null;
+  return answer.textAnswers?.answers?.[0]?.value?.trim() || null;
 }
 
 // ── Core Logic ─────────────────────────────────────────────────
@@ -125,7 +119,7 @@ async function pollFormResponses() {
       const identifier = extractDiscordIdentifier(entry, questionId);
       if (!identifier) {
         console.log(`[SKIP] Response ${entry.responseId}: missing Discord identifier`);
-        await reportToChannel(entry, null, "Missing Discord identifier in form response");
+        await reportToChannel(entry, null, "Missing Discord identifier in form response", questionId);
         skipped++;
         continue;
       }
@@ -134,7 +128,7 @@ async function pollFormResponses() {
         const member = await resolveGuildMember(guild, identifier);
         if (!member) {
           console.log(`[NOT FOUND] Discord user: ${identifier}`);
-          await reportToChannel(entry, identifier, "Cannot find Discord user in server");
+          await reportToChannel(entry, identifier, "Cannot find Discord user in server", questionId);
           notFound++;
           continue;
         }
