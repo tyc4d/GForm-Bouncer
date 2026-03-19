@@ -80,15 +80,20 @@ async function pollFormResponses() {
       }
       processedResponses.add(entry.responseId);
 
-      const discordId = extractDiscordId(entry, questionId);
-      if (!discordId) {
-        console.log(`⚠️  回覆 ${entry.responseId} 缺少 Discord ID，跳過`);
+      const identifier = extractDiscordIdentifier(entry, questionId);
+      if (!identifier) {
+        console.log(`⚠️  回覆 ${entry.responseId} 缺少 Discord 資訊，跳過`);
         skipped++;
         continue;
       }
 
       try {
-        const member = await guild.members.fetch(discordId);
+        const member = await resolveGuildMember(guild, identifier);
+        if (!member) {
+          console.log(`❌ 找不到 Discord 使用者：${identifier}`);
+          notFound++;
+          continue;
+        }
 
         if (member.roles.cache.has(ROLE_ID)) {
           console.log(`⏩ ${member.user.tag} 已有 Beta Tester 角色`);
@@ -100,12 +105,7 @@ async function pollFormResponses() {
         console.log(`✅ 已為 ${member.user.tag} 加上 Beta Tester 角色`);
         assigned++;
       } catch (err) {
-        if (err.code === 10007 || err.code === 10013) {
-          console.log(`❌ 找不到 Discord 使用者：${discordId}`);
-          notFound++;
-        } else {
-          console.error(`❌ 處理 ${discordId} 時發生錯誤：`, err.message);
-        }
+        console.error(`❌ 處理 ${identifier} 時發生錯誤：`, err.message);
       }
     }
 
@@ -117,22 +117,44 @@ async function pollFormResponses() {
   }
 }
 
-function extractDiscordId(response, questionId) {
+function extractDiscordIdentifier(response, questionId) {
   const answers = response.answers;
   if (!answers) return null;
 
   const answer = answers[questionId];
   if (!answer) return null;
 
-  const text = answer.textAnswers?.answers?.[0]?.value?.trim();
-  if (!text) return null;
+  const raw = answer.textAnswers?.answers?.[0]?.value?.trim();
+  if (!raw) return null;
 
-  const mentionMatch = text.match(/^<@!?(\d+)>$/);
-  return mentionMatch
-    ? mentionMatch[1]
-    : /^\d{17,20}$/.test(text)
-      ? text
-      : null;
+  // Strip leading @ if present
+  return raw.replace(/^@/, "");
+}
+
+async function resolveGuildMember(guild, identifier) {
+  // If numeric ID (17-20 digits), fetch directly
+  if (/^\d{17,20}$/.test(identifier)) {
+    try {
+      return await guild.members.fetch(identifier);
+    } catch {
+      return null;
+    }
+  }
+
+  // Strip old-style discriminator (e.g. "User#1234" → "User")
+  const username = identifier.replace(/#\d{4}$/, "").toLowerCase();
+
+  // Search guild members by username
+  const results = await guild.members.search({ query: username, limit: 100 });
+
+  return (
+    results.find(
+      (m) =>
+        m.user.username.toLowerCase() === username ||
+        m.user.globalName?.toLowerCase() === username ||
+        m.displayName.toLowerCase() === username
+    ) || null
+  );
 }
 
 // ── Web Server ─────────────────────────────────────────────────
