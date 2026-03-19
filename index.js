@@ -1,8 +1,7 @@
 require("dotenv").config();
-const path = require("path");
-const express = require("express");
 const { Client, GatewayIntentBits } = require("discord.js");
 const { google } = require("googleapis");
+const { createApp, loadConfig } = require("./web");
 
 const {
   DISCORD_TOKEN,
@@ -20,19 +19,17 @@ const {
 const INTERVAL_MS = parseInt(POLL_INTERVAL, 10) || 300_000;
 const WEB_PORT = parseInt(PORT, 10) || 3001;
 
-// Track already-processed response IDs to avoid duplicate work
 const processedResponses = new Set();
 
-// ── Google OAuth2 ──────────────────────────────────────────────
-
-const oauth2 = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET,
-  "http://localhost:3000/oauth2callback"
-);
-oauth2.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
-
-const forms = google.forms({ version: "v1", auth: oauth2 });
+// config.json takes priority, .env as fallback
+function getEffectiveConfig() {
+  const file = loadConfig();
+  return {
+    formId: file.selectedFormId || GOOGLE_FORM_ID,
+    refreshToken: file.googleRefreshToken || GOOGLE_REFRESH_TOKEN,
+    questionId: FORM_QUESTION_ID,
+  };
+}
 
 // ── Discord Client ─────────────────────────────────────────────
 
@@ -42,7 +39,8 @@ const client = new Client({
 
 client.once("ready", () => {
   console.log(`✅ 已登入 Discord：${client.user.tag}`);
-  console.log(`📋 表單 ID：${GOOGLE_FORM_ID}`);
+  const { formId } = getEffectiveConfig();
+  console.log(`📋 表單 ID：${formId || "(尚未設定，請至網頁介面選擇)"}`);
   console.log(`🔄 輪詢間隔：${INTERVAL_MS / 1000} 秒`);
 
   pollFormResponses();
@@ -52,11 +50,23 @@ client.once("ready", () => {
 // ── Core Logic ─────────────────────────────────────────────────
 
 async function pollFormResponses() {
+  const { formId, refreshToken, questionId } = getEffectiveConfig();
+
+  if (!formId || !refreshToken) {
+    console.log("⚠️  尚未設定表單或 Google 授權，請至網頁介面完成設定");
+    return;
+  }
+
   console.log(`\n⏳ [${new Date().toLocaleTimeString()}] 正在擷取表單回覆…`);
+
+  const oauth2 = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+  oauth2.setCredentials({ refresh_token: refreshToken });
+  const forms = google.forms({ version: "v1", auth: oauth2 });
 
   try {
     const guild = await client.guilds.fetch(GUILD_ID);
-    const responses = await fetchFormResponses();
+    const res = await forms.forms.responses.list({ formId });
+    const responses = res.data.responses || [];
 
     if (!responses.length) {
       console.log("📭 沒有新的回覆");
@@ -74,7 +84,7 @@ async function pollFormResponses() {
       }
       processedResponses.add(entry.responseId);
 
-      const discordId = extractDiscordId(entry);
+      const discordId = extractDiscordId(entry, questionId);
       if (!discordId) {
         console.log(`⚠️  回覆 ${entry.responseId} 缺少 Discord ID，跳過`);
         skipped++;
@@ -111,39 +121,31 @@ async function pollFormResponses() {
   }
 }
 
-async function fetchFormResponses() {
-  const res = await forms.forms.responses.list({ formId: GOOGLE_FORM_ID });
-  return res.data.responses || [];
-}
-
-function extractDiscordId(response) {
+function extractDiscordId(response, questionId) {
   const answers = response.answers;
   if (!answers) return null;
 
-  const answer = answers[FORM_QUESTION_ID];
+  const answer = answers[questionId];
   if (!answer) return null;
 
-  const text =
-    answer.textAnswers?.answers?.[0]?.value?.trim();
+  const text = answer.textAnswers?.answers?.[0]?.value?.trim();
   if (!text) return null;
 
-  // Accept raw numeric IDs or <@id> mention format
   const mentionMatch = text.match(/^<@!?(\d+)>$/);
-  return mentionMatch ? mentionMatch[1] : /^\d{17,20}$/.test(text) ? text : null;
+  return mentionMatch
+    ? mentionMatch[1]
+    : /^\d{17,20}$/.test(text)
+      ? text
+      : null;
 }
 
-// ── Web Server（服務條款 & 隱私權政策）──────────────────────────
+// ── Web Server ─────────────────────────────────────────────────
 
-const app = express();
-
-app.get("/", (_req, res) => res.redirect("/tos"));
-app.get("/tos", (_req, res) => res.sendFile(path.join(__dirname, "tos.html")));
-app.get("/privacy", (_req, res) => res.sendFile(path.join(__dirname, "privacy.html")));
-
+const app = createApp();
 app.listen(WEB_PORT, () => {
   console.log(`🌐 網頁伺服器已啟動：http://localhost:${WEB_PORT}`);
 });
 
-// ── Start ──────────────────────────────────────────────────────
+// ── Start Discord Bot ──────────────────────────────────────────
 
 client.login(DISCORD_TOKEN);
