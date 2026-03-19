@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>隱私權政策 - GForm Bouncer</title>
+    <style>
+        :root {
+            --primary-color: #2ecc71;
+            --text-color: #2c3e50;
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --accent-color: #e8f8f0;
+        }
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, "Microsoft JhengHei", sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+        h1 {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+        .last-updated {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-bottom: 30px;
+        }
+        h2 {
+            margin-top: 30px;
+            color: #34495e;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 15px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.9em;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border: 1px solid #eee;
+        }
+        th {
+            background-color: var(--accent-color);
+        }
+        .no-collect {
+            background-color: #fff5f5;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #feb2b2;
+            margin: 20px 0;
+        }
+        footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.8em;
+            color: #95a5a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>隱私權政策</h1>
+        <p class="last-updated">最後更新日期：2026 年 3 月 13 日</p>
+
+        <p>本隱私權政策說明 GForm Bouncer 如何蒐集、使用及保護您的個人資料。</p>
+
+        <h2>1. 蒐集的資料</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>資料類型</th>
+                    <th>來源</th>
+                    <th>用途</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Discord 使用者 ID</td>
+                    <td>Google 表單</td>
+                    <td>指派角色</td>
+                </tr>
+                <tr>
+                    <td>Discord 使用者名稱</td>
+                    <td>Discord API</td>
+                    <td>日誌紀錄</td>
+                </tr>
+                <tr>
+                    <td>Google 表單回覆 ID</td>
+                    <td>Google Forms API</td>
+                    <td>避免重複處理</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="no-collect">
+            <strong>我們不會蒐集：</strong> 電子郵件、密碼、訊息內容、語音通話資料、IP 位址或裝置資訊。
+        </div>
+
+        <h2>2. 資料儲存</h2>
+        <ul>
+            <li>已處理的回覆 ID 僅儲存於<strong>執行時期記憶體</strong>中，Bot 重啟後即清除。</li>
+            <li>本服務<strong>不使用資料庫</strong>，不會將您的個人資料持久化儲存。</li>
+        </ul>
+
+        <h2>3. 資料安全</h2>
+        <p>我們採取合理的安全措施：API 金鑰儲存於環境變數中，僅請求最低權限，且所有通訊皆透過 HTTPS 加密傳輸。</p>
+
+        <h2>4. 使用者權利</h2>
+        <p>您擁有存取權與刪除權。由於本服務不持久化儲存資料，Bot 重啟後執行時期資料即自動清除。</p>
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 40px 0;">
+        <p>如對本隱私權政策有任何疑問，請透過 Discord 伺服器聯繫管理員。</p>
+    </div>
+    <footer>© 2026 GForm Bouncer. All rights reserved.</footer>
+</body>
+</html>

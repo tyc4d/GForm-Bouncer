@@ -1,0 +1,20 @@
+[Unit]
+Description=GForm Bouncer Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=gform-bouncer
+Group=gform-bouncer
+WorkingDirectory=/opt/gform-bouncer
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=/opt/gform-bouncer/.env
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gform-bouncer
+
+[Install]
+WantedBy=multi-user.target

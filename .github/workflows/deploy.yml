@@ -1,0 +1,50 @@
+name: Deploy to SSH Server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  APP_NAME: gform-bouncer
+  DEPLOY_DIR: /opt/gform-bouncer
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            # 確保目標目錄存在
+            sudo mkdir -p ${{ env.DEPLOY_DIR }}
+            sudo chown $USER:$USER ${{ env.DEPLOY_DIR }}
+
+            # 如果尚未 clone，先 clone；否則 pull 最新
+            if [ ! -d "${{ env.DEPLOY_DIR }}/.git" ]; then
+              git clone https://github.com/${{ github.repository }}.git ${{ env.DEPLOY_DIR }}
+            else
+              cd ${{ env.DEPLOY_DIR }}
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+
+            cd ${{ env.DEPLOY_DIR }}
+
+            # 安裝依賴
+            npm ci --production
+
+            # 重啟服務
+            sudo systemctl restart ${{ env.APP_NAME }}
+            echo "✅ 部署完成！"
