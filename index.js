@@ -18,6 +18,7 @@ const INTERVAL_MS = parseInt(POLL_INTERVAL, 10) || 300_000;
 const WEB_PORT = parseInt(PORT, 10) || 3001;
 
 const processedResponses = new Set();
+const unresolvedIdentifiers = new Map();
 
 function getEffectiveConfig() {
   const file = loadConfig();
@@ -42,6 +43,40 @@ client.once("ready", () => {
 
   pollFormResponses();
   setInterval(pollFormResponses, INTERVAL_MS);
+});
+
+client.on("guildMemberAdd", async (member) => {
+  if (member.guild.id !== GUILD_ID) return;
+  if (!unresolvedIdentifiers.size) return;
+
+  const name = member.user.username.toLowerCase();
+  const globalName = member.user.globalName?.toLowerCase();
+  const displayName = member.displayName.toLowerCase();
+
+  for (const [identifier, responseId] of unresolvedIdentifiers) {
+    const target = identifier.toLowerCase();
+    const isMatch =
+      target === name ||
+      target === globalName ||
+      target === displayName ||
+      target === member.id;
+
+    if (!isMatch) continue;
+
+    try {
+      if (member.roles.cache.has(ROLE_ID)) {
+        console.log(`[JOIN] ${member.user.tag} already has Beta Tester role`);
+      } else {
+        await member.roles.add(ROLE_ID);
+        console.log(`[JOIN] ${member.user.tag} joined and matched -> Beta Tester`);
+      }
+      unresolvedIdentifiers.delete(identifier);
+      processedResponses.add(responseId);
+    } catch (err) {
+      console.error(`[ERROR] Failed to assign role on join for ${member.user.tag}:`, err.message);
+    }
+    break;
+  }
 });
 
 // ── Discord Report ─────────────────────────────────────────────
@@ -127,7 +162,8 @@ async function pollFormResponses() {
       try {
         const member = await resolveGuildMember(guild, identifier);
         if (!member) {
-          console.log(`[NOT FOUND] Discord user: ${identifier}`);
+          console.log(`[NOT FOUND] Discord user: ${identifier} (will check on join)`);
+          unresolvedIdentifiers.set(identifier, entry.responseId);
           await reportToChannel(entry, identifier, "Cannot find Discord user in server", questionId);
           notFound++;
           continue;
