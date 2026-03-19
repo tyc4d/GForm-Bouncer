@@ -105,7 +105,13 @@ async function pollFormResponses() {
         console.log(`✅ 已為 ${member.user.tag} 加上 Beta Tester 角色`);
         assigned++;
       } catch (err) {
-        console.error(`❌ 處理 ${identifier} 時發生錯誤：`, err.message);
+        if (err.code === 50013) {
+          console.error(
+            `❌ 權限不足：無法為 ${identifier} 指派角色。請確認 Bot 的角色排序在 "Beta Tester" 角色之上。`
+          );
+        } else {
+          console.error(`❌ 處理 ${identifier} 時發生錯誤：`, err.message);
+        }
       }
     }
 
