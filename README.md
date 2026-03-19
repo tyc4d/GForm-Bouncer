@@ -4,8 +4,6 @@ Discord Bot：自動根據 Google Form 回覆，為填寫者指派 **Beta Tester
 
 附帶 Web 管理面板，可透過 Google OAuth 登入並選擇要共享的表單與篩選欄位。
 
-**正式環境**：<https://discord-bot-intergrate-ac5c9f6adb1888d5c1270690641a0f687e759348.tyc4d.tw/>
-
 ## 運作流程
 
 1. 管理者透過網頁介面登入 Google 帳號，選擇要監聽的 Google Form 及篩選欄位
