@@ -2,12 +2,37 @@
 
 Discord Bot：自動根據 Google Form 回覆，為填寫者指派 **Beta Tester** 角色。
 
+附帶 Web 管理面板，可透過 Google OAuth 登入並選擇要共享的表單。
+
+**正式環境**：<https://discord-bot-intergrate-ac5c9f6adb1888d5c1270690641a0f687e759348.tyc4d.tw/>
+
 ## 運作流程
 
-1. Bot 定時（預設每 5 分鐘）向 Google Forms API 拉取表單回覆
-2. 從每筆回覆中擷取填寫者輸入的 Discord ID
-3. 在 Discord 伺服器中搜尋對應的成員
-4. 如果找到且尚未擁有 Beta Tester 角色，就自動加上
+1. 管理者透過網頁介面登入 Google 帳號，選擇要監聽的 Google Form
+2. Bot 定時（預設每 5 分鐘）向 Google Forms API 拉取表單回覆
+3. 從每筆回覆中擷取填寫者輸入的 Discord ID
+4. 在 Discord 伺服器中搜尋對應的成員
+5. 如果找到且尚未擁有 Beta Tester 角色，就自動加上
+
+## 專案結構
+
+```
+├── index.js              # 主程式（Discord Bot + Web Server）
+├── web.js                # Express 模組（OAuth、API、頁面路由）
+├── static.js             # 僅啟動 Web Server（不含 Bot）
+├── auth-setup.js         # CLI 工具：取得 Google Refresh Token
+├── public/
+│   └── index.html        # 管理面板前端（OAuth 登入 + 表單選擇）
+├── tos.html              # 服務條款
+├── privacy.html          # 隱私權政策
+├── gform-bouncer.service # systemd 服務檔
+├── server-setup.sh       # Ubuntu 伺服器初始化腳本
+├── data/                  # 執行時期設定（git ignored）
+│   └── config.json
+└── .github/
+    └── workflows/
+        └── deploy.yml    # CI/CD 自動部署
+```
 
 ## 事前準備
 
@@ -24,44 +49,110 @@ Discord Bot：自動根據 Google Form 回覆，為填寫者指派 **Beta Tester
 
 1. 前往 [Google Cloud Console](https://console.cloud.google.com/)
 2. 建立專案（或選擇已有的）
-3. 啟用 **Google Forms API**
+3. 啟用 **Google Forms API** 和 **Google Drive API**
 4. 進入 **APIs & Services → Credentials → Create Credentials → OAuth client ID**
    - Application type: **Web application**
-   - Authorized redirect URIs: `http://localhost:3000/oauth2callback`
+   - Authorized redirect URIs:
+     - `http://localhost:3001/auth/callback`（本地開發）
+     - `https://your-domain/auth/callback`（正式環境）
 5. 記下 **Client ID** 和 **Client Secret**
 
-### 3. 取得 Refresh Token
+## 快速開始
 
 ```bash
 # 安裝依賴
 npm install
 
-# 填寫 .env（從 .env.example 複製）
+# 建立 .env
 cp .env.example .env
 # 編輯 .env，填入 DISCORD_TOKEN、GUILD_ID、GOOGLE_CLIENT_ID、GOOGLE_CLIENT_SECRET
+```
 
-# 執行授權腳本
+### 方式 A：透過網頁介面設定（推薦）
+
+```bash
+# 啟動 Web Server（不需要 Discord Token 也能執行）
+npm run static
+```
+
+開啟 `http://localhost:3001`，用 Google 帳號登入後選擇表單即可。設定會存在 `data/config.json`。
+
+### 方式 B：透過 CLI 手動設定
+
+```bash
 npm run auth
 ```
 
 瀏覽器會開啟 Google 授權頁面，登入後終端機會印出 `GOOGLE_REFRESH_TOKEN`，貼回 `.env` 即可。
 
-## 使用方式
+### 啟動完整服務
 
 ```bash
 npm start
 ```
 
-## 環境變數說明
+同時啟動 Discord Bot 和 Web Server。
 
-| 變數 | 說明 |
+## NPM Scripts
+
+| 指令 | 說明 |
 |---|---|
-| `DISCORD_TOKEN` | Discord Bot Token |
-| `GUILD_ID` | Discord 伺服器 ID |
-| `ROLE_ID` | 要指派的角色 ID（預設 Beta Tester） |
-| `GOOGLE_CLIENT_ID` | Google OAuth2 Client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth2 Client Secret |
-| `GOOGLE_REFRESH_TOKEN` | 透過 `npm run auth` 取得 |
-| `GOOGLE_FORM_ID` | Google Form 的 ID |
-| `FORM_QUESTION_ID` | 表單中 Discord ID 欄位的 question ID |
-| `POLL_INTERVAL` | 輪詢間隔（毫秒），預設 300000（5 分鐘） |
+| `npm start` | 啟動 Discord Bot + Web Server |
+| `npm run static` | 僅啟動 Web Server（管理面板 + TOS + Privacy） |
+| `npm run auth` | CLI 工具取得 Google Refresh Token |
+
+## 環境變數
+
+| 變數 | 必填 | 說明 |
+|---|---|---|
+| `DISCORD_TOKEN` | ✅ | Discord Bot Token |
+| `GUILD_ID` | ✅ | Discord 伺服器 ID |
+| `ROLE_ID` | ✅ | 要指派的角色 ID（預設 Beta Tester） |
+| `GOOGLE_CLIENT_ID` | ✅ | Google OAuth2 Client ID |
+| `GOOGLE_CLIENT_SECRET` | ✅ | Google OAuth2 Client Secret |
+| `GOOGLE_REFRESH_TOKEN` | — | 透過網頁介面或 `npm run auth` 取得，存於 config.json 時可省略 |
+| `OAUTH_REDIRECT_URI` | — | OAuth2 callback URL，預設 `http://localhost:3001/auth/callback` |
+| `GOOGLE_FORM_ID` | — | Google Form ID，可透過網頁介面選擇（config.json 優先） |
+| `FORM_QUESTION_ID` | ✅ | 表單中 Discord ID 欄位的 question ID |
+| `POLL_INTERVAL` | — | 輪詢間隔（毫秒），預設 300000（5 分鐘） |
+| `PORT` | — | Web Server 連接埠，預設 3001 |
+
+## 部署（Ubuntu 24.04）
+
+### 伺服器初始化
+
+```bash
+sudo bash server-setup.sh
+```
+
+自動安裝 Node.js 22、Git，建立使用者分級：
+
+- `labrunner` — CI/CD 部署用（限定 sudo 權限）
+- `gform-bouncer` — Bot 運行用（無法登入）
+
+### CI/CD
+
+推送到 `main` 分支會觸發 GitHub Actions 自動部署。
+
+需設定的 GitHub Secrets：
+
+| Secret | 說明 |
+|---|---|
+| `SSH_HOST` | 伺服器 IP 或域名 |
+| `SSH_USER` | `labrunner` |
+| `SSH_PRIVATE_KEY` | SSH 私鑰 |
+| `SSH_PORT` | SSH 連接埠（非 22 才需要） |
+
+### 管理指令
+
+```bash
+sudo systemctl status gform-bouncer     # 查看狀態
+sudo systemctl restart gform-bouncer    # 重啟
+sudo systemctl stop gform-bouncer       # 停止
+sudo journalctl -u gform-bouncer -f     # 即時日誌
+```
+
+## 法律文件
+
+- [服務條款](/tos)
+- [隱私權政策](/privacy)
